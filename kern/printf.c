@@ -35,3 +35,39 @@ cprintf(const char *fmt, ...)
 	return cnt;
 }
 
+//for lab1 challenge1
+static int fgclr = -1;
+static int bgclr = -1;
+static const char numbers[] = "0123456789";
+
+void
+set_fgcolor(int clr)
+{
+	fgclr = clr;
+	cprintf("\033[3%cm", numbers[clr]);
+}
+
+void
+set_bgcolor(int clr)
+{
+	bgclr = clr;
+	cprintf("\033[4%cm", numbers[clr]);
+}
+
+void
+reset_fgcolor()
+{
+	cprintf("\033[0m");
+	if (bgclr != -1)
+		cprintf("\033[4%cm", numbers[bgclr]);
+	fgclr = -1;
+}
+
+void
+reset_bgcolor()
+{
+	cprintf("\033[0m");
+	if (fgclr != -1)
+		cprintf("\033[3%cm", numbers[fgclr]);
+	bgclr = -1;
+}
