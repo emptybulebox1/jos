@@ -24,9 +24,36 @@ struct Command {
 static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
+	{ "backtrace", "Backtrace the call of functions", mon_backtrace},
+	{ "rainbow", "show a rainbow", test_rainbow},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
+
+int
+test_rainbow(int argc, char** argv, struct Trapframe* tf)
+{
+	char msg[] = "rainbow!";
+	//check background color
+	for (int i = 1; i < COLOR_NUM; ++i) {
+		for (int j = 0; j < COLOR_NUM; ++j) {
+			set_bgcolor((j + i) % COLOR_NUM);
+			cprintf(" ");
+		}
+		reset_bgcolor();
+		cprintf("\n");
+	}
+	//check foreground color
+	for (int i = 1; i < COLOR_NUM; ++i) {
+		for (int j = 0; j < COLOR_NUM; ++j) {
+			set_fgcolor((i + j) % COLOR_NUM);
+			cprintf("%c", msg[j % (sizeof(msg) - 1)]);
+		}
+		reset_fgcolor();
+		cprintf("\n");
+	}
+	return 0;
+}
 
 int
 mon_help(int argc, char **argv, struct Trapframe *tf)
@@ -58,6 +85,22 @@ int
 mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 {
 	// Your code here.
+	cprintf("Stack backtrace:\n");
+	//backtrace eip chain
+	for (uint32_t ebp = read_ebp(); ebp; ebp = *(uint32_t*)(ebp)) {
+		cprintf("  ebp %08x", ebp);
+		cprintf("  eip %08x", ((uint32_t*)ebp)[1]);
+		cprintf("  args");
+		for (int i = 0; i < 5; ++i) {
+			cprintf(" %08x", ((uint32_t*)ebp)[i + 2]);
+		}
+		cprintf("\n");
+		//get eip info
+		struct Eipdebuginfo info;
+		debuginfo_eip(((uint32_t*)ebp)[1], &info);
+		cprintf("         %s:%d: %.*s+%u\n", info.eip_file, info.eip_line, info.eip_fn_namelen, info.eip_fn_name,
+			(((uint32_t*)ebp)[1] - info.eip_fn_addr));//offset (in bytes)
+	}
 	return 0;
 }
 
