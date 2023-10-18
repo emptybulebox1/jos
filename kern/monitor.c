@@ -10,6 +10,7 @@
 #include <kern/console.h>
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
+#include <kern/pmap.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -26,9 +27,63 @@ static struct Command commands[] = {
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "Backtrace the call of functions", mon_backtrace},
 	{ "rainbow", "show a rainbow", test_rainbow},
+	{ "showmap", "show memory mappings, Usage:\nshowmap <strat> [<length>]", mon_showmap},
+	{ "setperm", "set perm bit of mem mapping, Usage:\nsetperm <VA> <perm>", mon_setperm},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
+
+int mon_showmap(int argc, char** argv, struct Trapframe* tf) {
+	if ((argc < 2) || (argc > 3)) {
+		cprintf("Usage:\nshowmap <strat> [<length>]\n");
+		return 0;
+	}
+	uintptr_t vstart = (uintptr_t)strtol(argv[1], 0, 0);
+	size_t vlen = (argc == 3) ? (size_t)strtol(argv[2], 0, 0) : 1;
+	uintptr_t vend = vstart + vlen;
+	vstart = ROUNDDOWN(vstart, PGSIZE);
+	vend = ROUNDDOWN(vend, PGSIZE);
+
+	while (vstart <= vend) {
+		pte_t* pte = pgdir_walk(kern_pgdir, (void*)vstart, 0);
+		if (pte && (*pte & PTE_P)) {
+			cprintf("VA: 0x%08x     PA: 0x%08x    ", vstart, PTE_ADDR(*pte));
+			cprintf("PTE_U: %d, PTE_W: %d\n", !!(*pte & PTE_U), !!(*pte & PTE_W));
+		}
+		else 
+			cprintf("VA: 0x%08x     NO Mapping\n", vstart);
+
+		vstart += PGSIZE;
+	}
+	return 0;
+}
+
+int mon_setperm(int argc, char** argv, struct Trapframe* tf) {
+	if (argc != 3) {
+		cprintf("Usage:\nsetperm <virtual address> <permission>\n");
+		cprintf("PTE_P		0x001	// Present\n");
+		cprintf("PTE_W		0x002	// Writeable\n");
+		cprintf("PTE_U		0x004	// User\n");
+		cprintf("PTE_PWT		0x008	// Write-Through\n");
+		cprintf("PTE_PCD		0x010	// Cache-Disable\n");
+		cprintf("PTE_A		0x020	// Accessed\n");
+		cprintf("PTE_D		0x040	// Dirty\n");
+		cprintf("PTE_PS		0x080	// Page Size\n");
+		cprintf("PTE_G		0x100	// Global\n");
+		return 0;
+	}
+	uintptr_t va = (uintptr_t)strtol(argv[1], 0, 0);
+	uint16_t perm = (uint16_t)strtol(argv[2], 0, 0);
+	va = ROUNDDOWN(va, PGSIZE);
+	pte_t* pte = pgdir_walk(kern_pgdir, (void*)va, 0);
+
+	if (pte && (*pte & PTE_P))
+		*pte = ((*pte & (~0xfff)) | (perm | 0xfff) | PTE_P);
+	else
+		cprintf("No Mapping\n");
+	
+	return 0;
+}
 
 int
 test_rainbow(int argc, char** argv, struct Trapframe* tf)
