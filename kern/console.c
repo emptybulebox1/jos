@@ -162,7 +162,7 @@ cga_init(void)
 
 
 static void
-cga_putc(int c)
+old_cga_putc(int c)
 {
 	// if no attribute given, then use black on white
 	if (!(c & ~0xFF))
@@ -434,6 +434,7 @@ cons_getc(void)
 }
 
 // output a character to the console
+static void cga_putc(int c);
 static void
 cons_putc(int c)
 {
@@ -478,4 +479,86 @@ iscons(int fdnum)
 {
 	// used by readline
 	return 1;
+}
+
+// some helper functions for challenge1 in lab1
+static int
+isdigit(int c)
+{
+	return c >= '0' && c <= '9';
+}
+
+static int
+atoi(const char* s)
+{
+	int res = 0;
+	for (int i = 0; isdigit(s[i]); ++i)
+		res = res * 10 + (s[i] - '0');
+	return res;
+}
+
+static void
+handle_ansi_esc_param(const char* buf, int len, int* attr)
+{
+	static int ansi2cga[] = { 0x0, 0x4, 0x2, 0xe, 0x1, 0x5, 0x3, 0x7 };
+	int tmp_attr = *attr;
+	int n = atoi(buf);
+	if (n >= 30 && n <= 37) {
+		tmp_attr = (tmp_attr & ~(0x0f)) | ansi2cga[n - 30];
+	}
+	else if (n >= 40 && n <= 47) {
+		tmp_attr = (tmp_attr & ~(0xf0)) | (ansi2cga[n - 40] << 4);
+	}
+	else if (n == 0) {
+		tmp_attr = 0x07;
+	}
+	*attr = tmp_attr;
+}
+
+static void
+cga_putc(int c)
+{
+	static int state = 0;
+	static char esc_buf[512];
+	static int esc_len = 0;
+	static int attr = 0; // default
+	static int esc_attr = 0;
+	char ch = (char)c;
+
+	//use an automachine to control the state
+	if (state == 0)
+		if (ch == '\033')
+			state = 1;
+		else
+			old_cga_putc((attr << 8) | (c & 0xff));
+	else if (state == 1)
+		if (ch == '[')
+			state = 2, esc_attr = attr;
+		else
+			state = 0;
+	else if (state == 2)
+		if (isdigit(c))
+			state = 3, esc_buf[esc_len++] = ch;
+		else
+			state = 0, esc_len = 0;
+	else if (state == 3)
+		if (isdigit(c))
+			esc_buf[esc_len++] = ch;
+		else if (ch == ';') {
+			state = 2;
+			esc_buf[esc_len++] = 0;
+			handle_ansi_esc_param(esc_buf, esc_len, &esc_attr);
+			esc_len = 0;
+		}
+		else if (ch == 'm') {
+			state = 0;
+			esc_buf[esc_len++] = 0;
+			handle_ansi_esc_param(esc_buf, esc_len, &esc_attr);
+			esc_len = 0;
+			attr = esc_attr;
+		}
+		else
+			state = 0, esc_len = 0;
+	else
+		panic("console.c", "557", ch);
 }
