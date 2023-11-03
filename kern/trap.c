@@ -59,12 +59,74 @@ static const char *trapname(int trapno)
 }
 
 
+/*
+static void divide_handler() {};
+static void debug_handler() {};
+static void nmi_handler() {};
+static void brkpt_handler() {};
+static void oflow_handler() {};
+static void bound_handler() {};
+static void illop_handler() {};
+static void device_handler() {};
+static void dblflt_handler() {};
+static void tss_handler() {};
+static void segnp_handler() {};
+static void stack_handler() {};
+static void gpflt_handler() {};
+static void pgflt_handler() {};
+static void fperr_handler() {};
+static void align_handler() {};
+static void mchk_handler() {};
+static void simderr_handler() {};
+static void syscall_handler() {};
+*/
+
 void
 trap_init(void)
 {
 	extern struct Segdesc gdt[];
 
+
+	void divide_handler();
+	void debug_handler() ;
+	void nmi_handler() ;
+	void brkpt_handler() ;
+	void oflow_handler() ;
+	void bound_handler() ;
+	void illop_handler() ;
+	void device_handler() ;
+	void dblflt_handler() ;
+	void tss_handler() ;
+	void segnp_handler() ;
+	void stack_handler() ;
+	void gpflt_handler() ;
+	void pgflt_handler() ;
+	void fperr_handler() ;
+	void align_handler() ;
+	void mchk_handler() ;
+	void simderr_handler() ;
+	void syscall_handler() ;
+
 	// LAB 3: Your code here.
+	SETGATE(idt[T_DIVIDE], 0, GD_KT, divide_handler, 0);
+	SETGATE(idt[T_DEBUG], 0, GD_KT, debug_handler, 0);
+	SETGATE(idt[T_NMI], 0, GD_KT, nmi_handler, 0);
+	SETGATE(idt[T_BRKPT], 0, GD_KT, brkpt_handler, 3);
+	SETGATE(idt[T_OFLOW], 0, GD_KT, oflow_handler, 0);
+	SETGATE(idt[T_BOUND], 0, GD_KT, bound_handler, 0);
+	SETGATE(idt[T_ILLOP], 0, GD_KT, illop_handler, 0);
+	SETGATE(idt[T_DEVICE], 0, GD_KT, device_handler, 0);
+	SETGATE(idt[T_DBLFLT], 0, GD_KT, dblflt_handler, 0);
+	SETGATE(idt[T_TSS], 0, GD_KT, tss_handler, 0);
+	SETGATE(idt[T_SEGNP], 0, GD_KT, segnp_handler, 0);
+	SETGATE(idt[T_STACK], 0, GD_KT, stack_handler, 0);
+	SETGATE(idt[T_GPFLT], 0, GD_KT, gpflt_handler, 0);
+	SETGATE(idt[T_PGFLT], 0, GD_KT, pgflt_handler, 0);
+	SETGATE(idt[T_FPERR], 0, GD_KT, fperr_handler, 0);
+	SETGATE(idt[T_ALIGN], 0, GD_KT, align_handler, 0);
+	SETGATE(idt[T_MCHK], 0, GD_KT, mchk_handler, 0);
+	SETGATE(idt[T_SIMDERR], 0, GD_KT, simderr_handler, 0);
+	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_handler, 3);
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -144,6 +206,27 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
+	int tf_no = tf->tf_trapno;
+	if (tf_no == T_PGFLT) {
+		//cprintf("so, I trapped into pagefault\n");
+		page_fault_handler(tf);
+		return;
+	}
+	else if (tf_no == T_BRKPT) {
+		monitor(tf);
+		return;
+	}
+	else if (tf_no == T_SYSCALL) {
+		struct PushRegs* r = &tf->tf_regs;
+		r->reg_eax = syscall(r->reg_eax, r->reg_edx, r->reg_ecx, 
+			r->reg_ebx, r->reg_edi, r->reg_esi);
+		return;
+	}
+	else if (tf_no == T_DEBUG || tf_no == T_BRKPT) {
+		monitor(tf);
+		return;
+	}
+		
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -205,6 +288,9 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+	if (!(tf->tf_cs & 3)) {
+		panic("page_fault_handler");
+	}
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.

@@ -31,6 +31,10 @@ static struct Command commands[] = {
 	{ "rainbow", "show a rainbow", test_rainbow},
 	{ "showmap", "show memory mappings, Usage:\nshowmap <strat> [<length>]", mon_showmap},
 	{ "setperm", "set perm bit of mem mapping, Usage:\nsetperm <VA> <perm>", mon_setperm},
+	{ "step", "(debug) debug by step (gdb si)", mon_step},
+	{ "si", "(debug) debug by step (gdb si)", mon_step},
+	{ "continue", "(debug) continue execution", mon_continue},
+	{ "c", "(debug) continue execution", mon_continue},
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -225,3 +229,29 @@ monitor(struct Trapframe *tf)
 				break;
 	}
 }
+
+// If it's a breakpoint that triggered in user mode, return a negative value
+// thus infinitive loop in monitor will be broke,
+// otherwise, return 0.
+#define USR_BRKPT(tf) \
+	(tf && (tf->tf_trapno == T_DEBUG || tf->tf_trapno == T_BRKPT) && ((tf->tf_cs & 3) == 3))
+
+int mon_continue(int argc, char** argv, struct Trapframe* tf) {
+	if (USR_BRKPT(tf)) {
+		tf->tf_eflags &= ~FL_TF;
+		return -1;
+	}
+	else
+		return 0;
+}
+
+int mon_step(int argc, char** argv, struct Trapframe* tf) {
+	if (USR_BRKPT(tf)) {
+		// we still set trap flag bit 1, it will lead to a new trap in next instruction
+		tf->tf_eflags |= FL_TF;
+		return -1;
+	}
+	else
+		return 0;
+}
+
