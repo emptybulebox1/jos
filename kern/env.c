@@ -424,7 +424,9 @@ load_icode(struct Env *e, uint8_t *binary)
 void
 env_create(uint8_t *binary, enum EnvType type)
 {
+
 	// LAB 3: Your code here.
+
 	struct Env* e;
 	int errno;
 	// The new env's parent ID is set to 0.
@@ -434,6 +436,7 @@ env_create(uint8_t *binary, enum EnvType type)
 	}
 	load_icode(e, binary);
 	e->env_type = ENV_TYPE_USER;
+
 }
 
 //
