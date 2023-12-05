@@ -276,6 +276,17 @@ mem_init_mp(void)
 	//
 	// LAB 4: Your code here:
 
+	// up to NCPU CPUs
+	
+	for (int i = 0; i < NCPU; ++i) {
+
+		uintptr_t va = KSTACKTOP - i * (KSTKSIZE + KSTKGAP) - KSTKSIZE;
+		physaddr_t pa = PADDR(percpu_kstacks[i]);
+
+		// Permissions: kernel RW, user NONE
+		boot_map_region(kern_pgdir, va, KSTKSIZE, pa, PTE_W);
+	}
+	
 }
 
 // --------------------------------------------------------------
@@ -314,6 +325,7 @@ page_init(void)
 	// Change the code to reflect this.
 	// NB: DO NOT actually touch the physical memory corresponding to
 	// free pages!
+	
 	physaddr_t boot_alloc_end = PADDR(boot_alloc(0));
 
 	for (size_t i = 0; i < npages; i++) {
@@ -323,6 +335,11 @@ page_init(void)
 		if (i == 0) { 
 			//Mark physical page 0 as in use.
 			pages[i].pp_link = NULL;
+		}
+		// for lab4, mark the physical page at MPENTRY_PADDR as in use
+		else if (i == (MPENTRY_PADDR / PGSIZE)) {
+			pages[i].pp_link = NULL;
+			continue;
 		}
 		else if (i < npages_basemem) { 
 			//[PGSIZE, npages_basemem * PGSIZE) is free
@@ -343,6 +360,7 @@ page_init(void)
 			page_free_list = &pages[i];
 		}
 	}
+	
 }
 
 //
@@ -625,7 +643,26 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+	
+	// Be sure to round size up to a multiple of PGSIZE
+	
+	size = ROUNDUP(size, PGSIZE);
+	uintptr_t st = base;
+	// Up date base
+	base += size;
+	// if this reservation would overflow MMIOLIM
+	if (base > MMIOLIM) {
+		base -= size;
+		panic("mmio_map_region overflow\n");
+	}
+	// Reserve size bytes of virtual memory starting at base and
+	// map physical pages [pa,pa+size) to virtual addresses
+	// [base,base+size).  Since this is device memory and not
+	// regular DRAM, you'll have to tell the CPU that it isn't
+	// safe to cache access to this memory.
+	boot_map_region(kern_pgdir, st, size, pa, (PTE_W | PTE_PCD | PTE_PWT));
+	return (void*)st;
+	
 }
 
 static uintptr_t user_mem_check_addr;

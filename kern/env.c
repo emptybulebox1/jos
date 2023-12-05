@@ -14,6 +14,7 @@
 #include <kern/sched.h>
 #include <kern/cpu.h>
 #include <kern/spinlock.h>
+#include <inc/elink.h>
 
 struct Env *envs = NULL;		// All environments
 static struct Env *env_free_list;	// Free environment list
@@ -120,6 +121,7 @@ env_init(void)
 	// Set up envs array
 	// LAB 3: Your code here.
 	//I'm not sure
+	
 	env_free_list = &envs[0];
 	for (int i = 1; i < NENV; ++i) {
 		envs[i].env_id = 0;
@@ -127,17 +129,6 @@ env_init(void)
 		envs[i - 1].env_link = &envs[i];
 	}
 	envs[NENV - 1].env_link = NULL;
-	/*
-	struct Env* e;
-	env_free_list = NULL;
-	for (int i = NENV - 1; i >= 0; --i) {
-		e = &envs[i];
-		e->env_id = 0;
-		e->env_status = ENV_FREE;
-		e->env_link = env_free_list;
-		env_free_list = e;
-	}
-	*/
 
 
 	// Per-CPU part of the initialization
@@ -275,12 +266,18 @@ env_alloc(struct Env **newenv_store, envid_t parent_id)
 
 	// Enable interrupts while in user mode.
 	// LAB 4: Your code here.
+	e->env_tf.tf_eflags |= FL_IF;
 
 	// Clear the page fault handler until user installs one.
 	e->env_pgfault_upcall = 0;
 
 	// Also clear the IPC receiving flag.
 	e->env_ipc_recving = 0;
+
+#ifdef CONF_IPC_SLEEP
+	elink_init(&e->env_ipc_link);
+	elink_init(&e->env_ipc_queue);
+#endif
 
 	// commit the allocation
 	env_free_list = e->env_link;
@@ -490,6 +487,17 @@ env_free(struct Env *e)
 	e->env_status = ENV_FREE;
 	e->env_link = env_free_list;
 	env_free_list = e;
+
+#ifdef CONF_IPC_SLEEP
+	// wakeup the sleeping senders
+	while (!elink_empty(&e->env_ipc_queue)) {
+		struct Env* sender = master(elink_dequeue(&e->env_ipc_queue),
+			struct Env, env_ipc_link);
+		sender->env_status = ENV_RUNNABLE;
+		sender->env_tf.tf_regs.reg_eax = -E_BAD_ENV;
+	}
+	elink_remove(&e->env_ipc_link);
+#endif
 }
 
 //
@@ -580,7 +588,10 @@ env_run(struct Env *e)
 	e->env_runs++;
 	// Use lcr3() to switch to its address space.
 	lcr3(PADDR(e->env_pgdir));
-
+	
+	// Lab4 unlock kernel before we go back to user mode
+	unlock_kernel();
+	
 	// Step 2: Use env_pop_tf() to restore the environment's registers and drop into user mode in the environment.
 	env_pop_tf(&e->env_tf);
 	

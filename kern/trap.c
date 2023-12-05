@@ -66,27 +66,6 @@ static const char *trapname(int trapno)
 }
 
 
-/*
-static void divide_handler() {};
-static void debug_handler() {};
-static void nmi_handler() {};
-static void brkpt_handler() {};
-static void oflow_handler() {};
-static void bound_handler() {};
-static void illop_handler() {};
-static void device_handler() {};
-static void dblflt_handler() {};
-static void tss_handler() {};
-static void segnp_handler() {};
-static void stack_handler() {};
-static void gpflt_handler() {};
-static void pgflt_handler() {};
-static void fperr_handler() {};
-static void align_handler() {};
-static void mchk_handler() {};
-static void simderr_handler() {};
-static void syscall_handler() {};
-*/
 
 void
 trap_init(void)
@@ -114,6 +93,15 @@ trap_init(void)
 	void simderr_handler() ;
 	void syscall_handler() ;
 
+	// Lab4
+	void timer_handler();
+	void kbd_handler();
+	void serial_handler();
+	void spurious_handler();
+	void ide_handler();
+	void error_handler();
+
+
 	// LAB 3: Your code here.
 	SETGATE(idt[T_DIVIDE], 0, GD_KT, divide_handler, 0);
 	SETGATE(idt[T_DEBUG], 0, GD_KT, debug_handler, 0);
@@ -134,6 +122,14 @@ trap_init(void)
 	SETGATE(idt[T_MCHK], 0, GD_KT, mchk_handler, 0);
 	SETGATE(idt[T_SIMDERR], 0, GD_KT, simderr_handler, 0);
 	SETGATE(idt[T_SYSCALL], 0, GD_KT, syscall_handler, 3);
+
+	// Lab4
+	SETGATE(idt[IRQ_TIMER + IRQ_OFFSET], 0, GD_KT, timer_handler, 3);
+	SETGATE(idt[IRQ_KBD + IRQ_OFFSET], 0, GD_KT, kbd_handler, 3);
+	SETGATE(idt[IRQ_SERIAL + IRQ_OFFSET], 0, GD_KT, serial_handler, 3);
+	SETGATE(idt[IRQ_SPURIOUS + IRQ_OFFSET], 0, GD_KT, spurious_handler, 3);
+	SETGATE(idt[IRQ_IDE + IRQ_OFFSET], 0, GD_KT, ide_handler, 3);
+	SETGATE(idt[IRQ_ERROR + IRQ_OFFSET], 0, GD_KT, error_handler, 3);
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -167,21 +163,34 @@ trap_init_percpu(void)
 	// user space on that CPU.
 	//
 	// LAB 4: Your code here:
+	size_t cpu_no = cpunum();
+	struct Taskstate* ts = &cpus[cpu_no].cpu_ts;
 
 	// Setup a TSS so that we get the right stack
 	// when we trap to the kernel.
+	/*
 	ts.ts_esp0 = KSTACKTOP;
 	ts.ts_ss0 = GD_KD;
 	ts.ts_iomb = sizeof(struct Taskstate);
+	*/
+	ts->ts_esp0 = (uintptr_t)percpu_kstacks[cpu_no] + KSTKSIZE;
+	ts->ts_ss0 = GD_KD;
+	ts->ts_iomb = sizeof(struct Taskstate);
 
 	// Initialize the TSS slot of the gdt.
+	/*
 	gdt[GD_TSS0 >> 3] = SEG16(STS_T32A, (uint32_t) (&ts),
 					sizeof(struct Taskstate) - 1, 0);
 	gdt[GD_TSS0 >> 3].sd_s = 0;
+	*/
+	gdt[(GD_TSS0 >> 3) + cpu_no] = SEG16(STS_T32A, (uint32_t)(ts),
+		sizeof(struct Taskstate) - 1, 0);
+	// system
+	gdt[(GD_TSS0 >> 3) + cpu_no].sd_s = 0;
 
 	// Load the TSS selector (like other segment selectors, the
 	// bottom three bits are special; we leave them 0)
-	ltr(GD_TSS0);
+	ltr(GD_TSS0 + (cpu_no << 3));
 
 	// Load the IDT
 	lidt(&idt_pd);
@@ -239,6 +248,7 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
 	int tf_no = tf->tf_trapno;
+	
 	if (tf_no == T_PGFLT) {
 		//cprintf("so, I trapped into pagefault\n");
 		page_fault_handler(tf);
@@ -264,7 +274,7 @@ trap_dispatch(struct Trapframe *tf)
 	// The hardware sometimes raises these because of noise on the
 	// IRQ line or other reasons. We don't care.
 	if (tf->tf_trapno == IRQ_OFFSET + IRQ_SPURIOUS) {
-		cprintf("Spurious interrupt on irq 7\n");
+		//cprintf("Spurious interrupt on irq 7\n");
 		print_trapframe(tf);
 		return;
 	}
@@ -272,6 +282,13 @@ trap_dispatch(struct Trapframe *tf)
 	// Handle clock interrupts. Don't forget to acknowledge the
 	// interrupt using lapic_eoi() before calling the scheduler!
 	// LAB 4: Your code here.
+	
+	if (tf->tf_trapno == (IRQ_TIMER + IRQ_OFFSET)) {
+		//cprintf("so, I trapped into timer\n");
+		lapic_eoi();
+		sched_yield();
+		return;
+	}
 
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
@@ -309,6 +326,7 @@ trap(struct Trapframe *tf)
 		// Acquire the big kernel lock before doing any
 		// serious kernel work.
 		// LAB 4: Your code here.
+		lock_kernel();
 		assert(curenv);
 
 		// Garbage collect if current enviroment is a zombie
@@ -355,6 +373,7 @@ page_fault_handler(struct Trapframe *tf)
 
 	// LAB 3: Your code here.
 	if (!(tf->tf_cs & 3)) {
+		print_trapframe(tf);
 		panic("page_fault_handler");
 	}
 
@@ -391,6 +410,48 @@ page_fault_handler(struct Trapframe *tf)
 	//   (the 'tf' variable points at 'curenv->env_tf').
 
 	// LAB 4: Your code here.
+
+	// If there's no page fault upcall
+	if (curenv->env_pgfault_upcall == NULL) {
+		goto page_fault_handler_bad;
+	}
+	// check if upcall & exception stack are in user sapce
+	user_mem_assert(curenv, (void*)curenv->env_pgfault_upcall, 0, PTE_U);
+	user_mem_assert(curenv, (void*)(UXSTACKTOP - 1), 0, PTE_U | PTE_W);
+	// If exception stack overflows
+	if (fault_va < UXSTACKTOP - PGSIZE && fault_va >= UXSTACKTOP - 2 * PGSIZE) {
+		goto page_fault_handler_bad;
+	}
+
+	uint32_t esp;
+	size_t usz = sizeof(struct UTrapframe);
+	
+	if (tf->tf_esp >= UXSTACKTOP - PGSIZE && tf->tf_esp <= UXSTACKTOP) {
+		// leave an extra word
+		esp = tf->tf_esp - (usz + 4);
+	}
+	else {
+		esp = UXSTACKTOP - usz;
+	}
+	// If exception stack overflows
+	if (esp < UXSTACKTOP - PGSIZE) {
+		goto page_fault_handler_bad;
+	}
+
+	struct UTrapframe* utf = (struct UTrapframe*)esp;
+	utf->utf_eflags = tf->tf_eflags;
+	utf->utf_eip = tf->tf_eip;
+	utf->utf_esp = tf->tf_esp;
+	utf->utf_regs = tf->tf_regs;
+	utf->utf_err = tf->tf_err;
+	utf->utf_fault_va = fault_va;
+	tf->tf_esp = esp;
+	tf->tf_eip = (uint32_t)curenv->env_pgfault_upcall;
+	return;
+
+
+
+page_fault_handler_bad:
 
 	// Destroy the environment that caused the fault.
 	cprintf("[%08x] user fault va %08x ip %08x\n",
