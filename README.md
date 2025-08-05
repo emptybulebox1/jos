@@ -2,7 +2,16 @@
 
 ## Project Introduction
 
-JOS is an educational operating system built from scratch, based on the MIT 6.828 Operating System Engineering course. This project gradually constructs a functioning operating system through a series of labs, helping to understand core OS concepts and implementation details.
+JOS is an educational operating system based on the MIT 6.828 Operating System Engineering course. This project gradually constructs a functioning operating system through a series of labs, helping to understand core OS concepts and implementation details.
+
+## My Contributions
+
+I implemented approximately 2500 lines of critical code throughout the project, filling in all the required functionality across the labs. Key accomplishments include:
+
+- **Completed all core requirements** across all five labs
+- **Implemented numerous challenge features** beyond basic requirements for course credit
+- **Gained comprehensive understanding** of the entire operating system stack from boot process to high-level abstractions
+- **Successfully built a working OS** with memory management, process scheduling, system calls, file system support and etc.
 
 ## Features
 
@@ -55,17 +64,6 @@ This operating system implements the following core functionalities:
 - File descriptors and pipes
 - Spawn system call (for creating new processes)
 - Shell implementation
-
-## Learning Outcomes
-
-By implementing this operating system, I've gained deep understanding of:
-
-- Computer boot and initialization processes
-- Memory management and virtual memory principles
-- Process management and scheduling algorithms
-- Exception handling and system call mechanisms
-- Device driver development
-- File system design and implementation
 
 ## How to Run
 
