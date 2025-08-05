@@ -47,3 +47,30 @@ int	alloc_block(void);
 /* test.c */
 void	fs_test(void);
 
+
+/* bc.c cahllenge */
+#define NCACHE 1024
+#define NVISIT (NCACHE>>2)
+
+typedef struct buffer_cache {
+	struct buffer_cache* bc_free;
+	EmbedLink bc_used;
+	void* bc_addr;
+}buffer_cache;
+
+static buffer_cache bcaches[NCACHE];
+static buffer_cache* bc_free;
+static EmbedLink Bc_used;
+
+static int ncache = 0;
+static int nvisit = 0;
+
+/* Initialize */
+static void bufc_init(void);
+/* alloc a buffer_cache when a page fault needs a disk block */
+static int bufc_alloc(void* addr);
+/* increase counter, if nvisit == NVISIT, clear all access bit */
+int bufc_visit(void);
+/* evict a selected buffer */
+static int bufc_evict(void);
+static int is_reserved(void* addr);

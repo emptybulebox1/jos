@@ -47,10 +47,51 @@
 /*
  * Lab 3: Your code here for generating entry points for the different traps.
  */
+ TRAPHANDLER_NOEC(divide_handler, T_DIVIDE)
+ TRAPHANDLER_NOEC(debug_handler, T_DEBUG)
+ TRAPHANDLER_NOEC(nmi_handler, T_NMI)
+ TRAPHANDLER_NOEC(brkpt_handler, T_BRKPT)
+ TRAPHANDLER_NOEC(oflow_handler, T_OFLOW)
+ TRAPHANDLER_NOEC(bound_handler, T_BOUND)
+ TRAPHANDLER_NOEC(illop_handler, T_ILLOP)
+ TRAPHANDLER_NOEC(device_handler, T_DEVICE)
+ TRAPHANDLER(dblflt_handler, T_DBLFLT)
+ TRAPHANDLER(tss_handler, T_TSS)
+ TRAPHANDLER(segnp_handler, T_SEGNP)
+ TRAPHANDLER(stack_handler, T_STACK)
+ TRAPHANDLER(gpflt_handler, T_GPFLT)
+ TRAPHANDLER(pgflt_handler, T_PGFLT)
+ TRAPHANDLER_NOEC(fperr_handler, T_FPERR)
+ TRAPHANDLER(align_handler, T_ALIGN)
+ TRAPHANDLER_NOEC(mchk_handler, T_MCHK)
+ TRAPHANDLER_NOEC(simderr_handler, T_SIMDERR)
+ TRAPHANDLER_NOEC(syscall_handler, T_SYSCALL)
+
+ // Lab4
+ TRAPHANDLER_NOEC(timer_handler, IRQ_TIMER + IRQ_OFFSET)
+ TRAPHANDLER_NOEC(kbd_handler, IRQ_KBD + IRQ_OFFSET)
+ TRAPHANDLER_NOEC(serial_handler, IRQ_SERIAL + IRQ_OFFSET)
+ TRAPHANDLER_NOEC(spurious_handler, IRQ_SPURIOUS + IRQ_OFFSET)
+ TRAPHANDLER_NOEC(ide_handler, IRQ_IDE + IRQ_OFFSET)
+ TRAPHANDLER_NOEC(error_handler, IRQ_ERROR + IRQ_OFFSET)
+
+
 
 
 
 /*
  * Lab 3: Your code here for _alltraps
  */
+ _alltraps:
+	pushl %ds
+	pushl %es
+	pushal
+	movl $GD_KD, %ax
+	movw %ax, %ds
+	movw %ax, %es
+	pushl %esp
+	call trap
+bad:
+	jmp bad
+
 

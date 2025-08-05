@@ -1,5 +1,6 @@
 
 #include "fs.h"
+#include <inc/elink.h>
 
 // Return the virtual address of this disk block.
 void*
@@ -48,6 +49,12 @@ bc_pgfault(struct UTrapframe *utf)
 	// the disk.
 	//
 	// LAB 5: you code here:
+	addr = ROUNDDOWN(addr, BLKSIZE);
+	r = sys_page_alloc(0, addr, PTE_P | PTE_U | PTE_W);
+	if (r < 0) panic("bc_pagefault");
+
+	r = ide_read(blockno * BLKSECTS, addr, BLKSECTS);
+	if (r < 0) panic("bc_pgfault");
 
 	// Clear the dirty bit for the disk block page since we just read the
 	// block from disk
@@ -59,6 +66,10 @@ bc_pgfault(struct UTrapframe *utf)
 	// in?)
 	if (bitmap && block_is_free(blockno))
 		panic("reading free block %08x\n", blockno);
+	
+#ifdef BLOCK_CACHE
+	bufc_alloc(addr);
+#endif
 }
 
 // Flush the contents of the block containing VA out to disk if
@@ -77,6 +88,24 @@ flush_block(void *addr)
 		panic("flush_block of bad va %08x", addr);
 
 	// LAB 5: Your code here.
+	addr = ROUNDDOWN(addr, BLKSIZE);
+
+	// If the block is not in the block cache or is not dirty, does nothing
+	if ((!va_is_dirty(addr)) || (!va_is_mapped(addr))) {
+		return;
+	}
+
+	int rv = 0;
+	// Flush the contents of the block containing VA out to disk
+	rv = ide_write(blockno * BLKSECTS, addr, BLKSECTS);
+	if (rv < 0) panic("flush_block");
+
+	// then clear the PTE_D bit using sys_page_map.
+	rv = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL);
+	if (rv < 0) panic("flush_block");
+
+	return;
+
 	panic("flush_block not implemented");
 }
 
@@ -145,7 +174,101 @@ bc_init(void)
 	set_pgfault_handler(bc_pgfault);
 	check_bc();
 
+#ifdef BLOCK_CACHE
+	bufc_init();
+#endif
+
 	// cache the super block by reading it once
 	memmove(&super, diskaddr(1), sizeof super);
 }
 
+
+
+static void bufc_init(void) {
+	bc_free = NULL;
+	int i = 0;
+
+	while (i < NCACHE) {
+		bcaches[i].bc_free = bc_free;
+		bc_free = &bcaches[i];
+		elink_init(&bcaches[i].bc_used);
+		i++;
+	}
+
+	elink_init(&Bc_used);
+}
+static int bufc_alloc(void* addr) {
+	if (is_reserved(addr)) return 0;
+
+	int rv = 0;
+	if (ncache == NCACHE) {
+		rv = bufc_evict();
+		if (rv < 0) return rv;
+	}
+
+	ncache++;
+	buffer_cache* bc = bc_free;
+	bc_free = bc_free->bc_free;
+	elink_enqueue(&Bc_used, &bc->bc_used);
+	bc->bc_addr = addr;
+
+	return 0;
+}
+int bufc_visit(void) {
+	nvisit++;
+	if (nvisit < NVISIT) return 0;
+
+	nvisit = 0;
+
+	struct EmbedLink* ln = Bc_used.next;
+	while (ln != &Bc_used) {
+		buffer_cache* bc = master(ln, buffer_cache, bc_used);
+		void* addr = bc->bc_addr;
+		if (uvpt[PGNUM(addr)] & PTE_A) {
+			int rv = 0;
+			// flush_block has been modified
+			flush_block(addr);
+			rv = sys_page_map(0, addr, 0, addr, uvpt[PGNUM(addr)] & PTE_SYSCALL);
+			if (rv < 0) return rv;
+		}
+		ln = ln->next;
+	}
+	return 0;
+}
+static int bufc_evict(void) {
+	struct EmbedLink* ln = Bc_used.next;
+	buffer_cache* bc;
+	while (ln != &Bc_used) {
+		bc = master(ln, buffer_cache, bc_used);
+		void* addr = bc->bc_addr;
+
+		if (!(uvpt[PGNUM(addr)] & PTE_A)) {
+			goto bufc_remove;
+		}
+		ln = ln->next;
+	}
+
+	if (ncache==NCACHE) {
+		ln = Bc_used.next;
+		bc = master(ln, buffer_cache, bc_used);
+		goto bufc_remove;
+	}
+
+	return 0;
+
+bufc_remove:
+	flush_block(bc->bc_addr);
+	int rv = sys_page_unmap(0, bc->bc_addr);
+	if (rv < 0) return rv;
+
+	ncache--;
+	elink_remove(&bc->bc_used);
+	bc->bc_free = bc_free;
+	bc_free = bc;
+	bc->bc_addr = NULL;
+
+	return 0;
+}
+static int is_reserved(void* addr) {
+	return addr < diskaddr(0x2);
+}

@@ -55,6 +55,17 @@ again:
 			// then close the original 'fd'.
 
 			// LAB 5: Your code here.
+			fd = open(t, O_RDONLY);
+			if (fd < 0) {
+				cprintf("error: open failed");
+				exit();
+			}
+			else if (fd > 0) {
+				dup(fd, 0);
+				close(fd);
+			}
+			break;
+
 			panic("< redirection not implemented");
 			break;
 

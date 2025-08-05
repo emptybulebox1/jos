@@ -302,6 +302,27 @@ static int
 copy_shared_pages(envid_t child)
 {
 	// LAB 5: Your code here.
+	uintptr_t addr = 0;
+	int rv = 0;
+
+	while (addr < UTOP) {
+		if (!(uvpd[PDX(addr)] & PTE_P)) {
+			addr = (uintptr_t)PGADDR(PDX(addr) + 1, PTX(addr), PGOFF(addr));
+		}
+		else {
+			uintptr_t tmp = (uintptr_t)PGADDR(PDX(addr) + 1, PTX(addr), PGOFF(addr));
+			tmp = MIN(tmp, UTOP);
+			while (addr < tmp) {
+				pte_t pte = uvpt[PGNUM(addr)];
+				int flag = (pte & PTE_P) && (pte & PTE_U) && (pte & PTE_SHARE);
+				if (flag) {
+					rv = sys_page_map(0, (void*)addr, child, (void*)addr, pte & PTE_SYSCALL);
+					if (rv < 0) return rv;
+				}
+				addr += PGSIZE;
+			}
+		}
+	}
 	return 0;
 }
 

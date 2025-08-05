@@ -8,9 +8,25 @@
 #endif /* !NULL */
 
 // lib/console.c
+//definition for corlours
+#define  COLOR_BLACK   0
+#define  COLOR_RED     1
+#define  COLOR_GREEN   2
+#define  COLOR_YELLOW  3
+#define  COLOR_BLUE    4
+#define  COLOR_MAGENTA 5
+#define  COLOR_CYAN    6
+#define  COLOR_WHITE   7
+#define  COLOR_NUM     8
 void	cputchar(int c);
 int	getchar(void);
 int	iscons(int fd);
+// set and reset the foreground color
+void set_fgcolor(int color);
+void reset_fgcolor();
+// set and reset the background color
+void set_bgcolor(int color);
+void reset_bgcolor();
 
 // lib/printfmt.c
 void	printfmt(void (*putch)(int, void*), void *putdat, const char *fmt, ...);
